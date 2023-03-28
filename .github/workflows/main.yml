@@ -1,21 +1,39 @@
-- name: Set up RDP connection to Azure VM
-  hosts: localhost
-  connection: local
-  gather_facts: no
+name: RDP to Azure VM
 
-  vars:
-    resource_group_name: "your_resource_group_name"
-    vm_name: "your_vm_name"
-    rdp_port: 3389
-    azure_region: "southeastasia"
+on: [push]
 
-  tasks:
-    - name: Get public IP address of the VM
-      azure_rm_publicipaddress_info:
-        resource_group: "{{ resource_group_name }}"
-        name: "{{ vm_name }}-PublicIP"
-      register: public_ip_address_info
+env:
+  AZURE_RG: "your_resource_group_name"
+  AZURE_VM: "your_vm_name"
+  RDP_PORT: "3389"
+  AZURE_REGION: "southeastasia"
 
-    - name: Open RDP connection to the VM
-      command: "mstsc /v:{{ public_ip_address_info['publicipaddress']['ipAddress'] }}:{{ rdp_port }}"
-      delegate_to: localhost
+jobs:
+  rdp:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Azure CLI
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
+          inlineScript: |
+            Import-Module Az.Accounts -Force
+            Import-Module Az.Resources -Force
+            Import-Module Az.Compute -Force
+            Set-AzContext -SubscriptionId ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get public IP address of the VM
+        run: |
+          ip=$(az network public-ip show --resource-group ${{ env.AZURE_RG }} --name ${{ env.AZURE_VM }}-PublicIP --query ipAddress -o tsv)
+          echo "::set-output name=public_ip_address::$ip"
+
+        id: public_ip_address
+
+      - name: Open RDP connection to the VM
+        run: |
+          cmdkey /generic:TERMSRV/${{ steps.public_ip_address.outputs.public_ip_address }} /user:azureuser /pass:${{ secrets.AZURE_PASSWORD }}
+          mstsc /v:${{ steps.public_ip_address.outputs.public_ip_address }}:${{ env.RDP_PORT }} /f
