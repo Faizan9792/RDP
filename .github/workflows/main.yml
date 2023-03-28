@@ -1,4 +1,4 @@
-name: Azure RDP Workflow
+name: Mumbai RDP Workflow
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
 
 env:
   AZURE_RG: "my-resource-group"
-  AZURE_LOCATION: "eastus"
+  AZURE_LOCATION: "southindia"
   VM_NAME: "my-vm"
   VM_SIZE: "Standard_B1ls"
   USERNAME: "myusername"
@@ -86,9 +86,3 @@ jobs:
           --size ${{ env.VM_SIZE }} \
           --image Canonical:UbuntuServer:18.04-LTS:latest \
           --admin-username ${{ env.USERNAME }} \
-          --admin-password ${{ env.PASSWORD }} \
-          --nics ${{ env.NIC_ID }}
-    - name: Install xrdp and xfce4
-      run: |
-        sudo apt update
-        sudo apt install
