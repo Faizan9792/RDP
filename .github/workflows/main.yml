@@ -1,94 +1,45 @@
-name: Azure RDP Workflow
+name: CI
 
-on:
-  push:
-    branches: [ main ]
 
-env:
-  AZURE_RG: "my-resource-group"
-  AZURE_LOCATION: "eastus"
-  VM_NAME: "my-vm"
-  VM_SIZE: "Standard_B1ls"
-  USERNAME: "myusername"
-  PASSWORD: ${{ secrets.PASSWORD }}
+on: [push, workflow_dispatch]
+
 
 jobs:
+
   build:
-    runs-on: ubuntu-latest
+
+
+    runs-on: windows-latest
+
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Set up Python and Azure CLI
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
-    - name: Install Azure CLI
-      run: |
-        curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-    - name: Login to Azure
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-    - name: Create resource group
-      run: az group create --name ${{ env.AZURE_RG }} --location ${{ env.AZURE_LOCATION }}
-    - name: Create virtual network
-      run: |
-        az network vnet create \
-          --resource-group ${{ env.AZURE_RG }} \
-          --name my-vnet \
-          --address-prefixes 10.0.0.0/16 \
-          --subnet-name my-subnet \
-          --subnet-prefix 10.0.0.0/24
-    - name: Create public IP address
-      id: publicip
-      run: |
-        az network public-ip create \
-          --resource-group ${{ env.AZURE_RG }} \
-          --name my-public-ip \
-          --sku Basic \
-          --allocation-method Dynamic \
-          --query publicIp.ipAddress -o tsv
+
+    - name: Download
+
+      run: Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+
+    - name: Extract
+
+      run: Expand-Archive ngrok.zip
+
+    - name: Auth
+
+      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+
       env:
-        PUBLIC_IP: ${{ steps.publicip.outputs.stdout }}
-    - name: Create network security group
-      run: |
-        az network nsg create \
-          --resource-group ${{ env.AZURE_RG }} \
-          --name my-nsg
-    - name: Add RDP rule to network security group
-      run: |
-        az network nsg rule create \
-          --resource-group ${{ env.AZURE_RG }} \
-          --nsg-name my-nsg \
-          --name allow-rdp \
-          --priority 1000 \
-          --destination-port-ranges 3389 \
-          --access Allow \
-          --protocol Tcp
-    - name: Create network interface
-      id: nic
-      run: |
-        az network nic create \
-          --resource-group ${{ env.AZURE_RG }} \
-          --name my-nic \
-          --vnet-name my-vnet \
-          --subnet my-subnet \
-          --public-ip-address my-public-ip \
-          --network-security-group my-nsg \
-          --query id -o tsv
-      env:
-        NIC_ID: ${{ steps.nic.outputs.stdout }}
-    - name: Create virtual machine
-      run: |
-        az vm create \
-          --resource-group ${{ env.AZURE_RG }} \
-          --name ${{ env.VM_NAME }} \
-          --size ${{ env.VM_SIZE }} \
-          --image Canonical:UbuntuServer:18.04-LTS:latest \
-          --admin-username ${{ env.USERNAME }} \
-          --admin-password ${{ env.PASSWORD }} \
-          --nics ${{ env.NIC_ID }}
-    - name: Install xrdp and xfce4
-      run: |
-        sudo apt update
-        sudo apt install
+
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    - name: Enable TS
+
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
+
+    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+    - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+    - name: Create Tunnel
+
+      run: .\ngrok\ngrok.exe tcp 3389
