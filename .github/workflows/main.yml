@@ -1,48 +1,91 @@
-name: RDP to Azure VM
+name: Azure RDP Workflow
 
-on: [push]
+on:
+  push:
+    branches: [ main ]
 
 env:
-  AZURE_RG: "your_resource_group_name"
-  AZURE_VM: "your_vm_name"
-  RDP_PORT: "3389"
-  AZURE_REGION: "southeastasia"
+  AZURE_RG: "my-resource-group"
+  AZURE_LOCATION: "southindia"
+  VM_NAME: "my-vm"
+  VM_SIZE: "Standard_B1ls"
+  USERNAME: "myusername"
+  PASSWORD: ${{ secrets.PASSWORD }}
 
 jobs:
-  rdp:
-    runs-on: windows-latest
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-       
-      - name: Verify Azure CLI installation
-  run: az --version
-
-      - name: Install Azure CLI
-  run: |
-    curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-    az --version
-
-
-      - name: Set up Azure CLI
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-          enable-AzPSSession: true
-          inlineScript: |
-            Import-Module Az.Accounts -Force
-            Import-Module Az.Resources -Force
-            Import-Module Az.Compute -Force
-            Set-AzContext -SubscriptionId ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Get public IP address of the VM
-        run: |
-          ip=$(az network public-ip show --resource-group ${{ env.AZURE_RG }} --name ${{ env.AZURE_VM }}-PublicIP --query ipAddress -o tsv)
-          echo "::set-output name=public_ip_address::$ip"
-
-        id: public_ip_address
-
-      - name: Open RDP connection to the VM
-        run: |
-          cmdkey /generic:TERMSRV/${{ steps.public_ip_address.outputs.public_ip_address }} /user:azureuser /pass:${{ secrets.AZURE_PASSWORD }}
-          mstsc /v:${{ steps.public_ip_address.outputs.public_ip_address }}:${{ env.RDP_PORT }} /f
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Set up Python and Azure CLI
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+    - name: Install Azure CLI
+      run: |
+        curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Create resource group
+      run: az group create --name ${{ env.AZURE_RG }} --location ${{ env.AZURE_LOCATION }}
+    - name: Create virtual network
+      run: |
+        az network vnet create \
+          --resource-group ${{ env.AZURE_RG }} \
+          --name my-vnet \
+          --address-prefixes 10.0.0.0/16 \
+          --subnet-name my-subnet \
+          --subnet-prefix 10.0.0.0/24
+    - name: Create public IP address
+      id: publicip
+      run: |
+        az network public-ip create \
+          --resource-group ${{ env.AZURE_RG }} \
+          --name my-public-ip \
+          --sku Basic \
+          --allocation-method Dynamic \
+          --query publicIp.ipAddress -o tsv
+      env:
+        PUBLIC_IP: ${{ steps.publicip.outputs.stdout }}
+    - name: Create network security group
+      run: |
+        az network nsg create \
+          --resource-group ${{ env.AZURE_RG }} \
+          --name my-nsg
+    - name: Add RDP rule to network security group
+      run: |
+        az network nsg rule create \
+          --resource-group ${{ env.AZURE_RG }} \
+          --nsg-name my-nsg \
+          --name allow-rdp \
+          --priority 1000 \
+          --destination-port-ranges 3389 \
+          --access Allow \
+          --protocol Tcp
+    - name: Create network interface
+      id: nic
+      run: |
+        az network nic create \
+          --resource-group ${{ env.AZURE_RG }} \
+          --name my-nic \
+          --vnet-name my-vnet \
+          --subnet my-subnet \
+          --public-ip-address my-public-ip \
+          --network-security-group my-nsg \
+          --query id -o tsv
+      env:
+        NIC_ID: ${{ steps.nic.outputs.stdout }}
+    - name: Create virtual machine
+      run: |
+        az vm create \
+          --resource-group ${{ env.AZURE_RG }} \
+          --name ${{ env.VM_NAME }} \
+          --size ${{ env.VM_SIZE }} \
+          --image Canonical:UbuntuServer:18.04-LTS:latest \
+          --admin-username ${{ env.USERNAME }} \
+          --admin-password ${{ env.PASSWORD }} \
+          --nics ${{ env.NIC_ID }}
+    - name: Install xrdp and xf
