@@ -88,4 +88,7 @@ jobs:
           --admin-username ${{ env.USERNAME }} \
           --admin-password ${{ env.PASSWORD }} \
           --nics ${{ env.NIC_ID }}
-    - name: Install xrdp and xf
+    - name: Install xrdp and xfce4
+      run: |
+        sudo apt update
+        sudo apt install
