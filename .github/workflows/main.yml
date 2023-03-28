@@ -6,7 +6,7 @@ on:
 
 env:
   AZURE_RG: "my-resource-group"
-  AZURE_LOCATION: "southindia"
+  AZURE_LOCATION: "eastus"
   VM_NAME: "my-vm"
   VM_SIZE: "Standard_B1ls"
   USERNAME: "myusername"
