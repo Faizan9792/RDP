@@ -37,3 +37,12 @@ jobs:
         run: |
           cmdkey /generic:TERMSRV/${{ steps.public_ip_address.outputs.public_ip_address }} /user:azureuser /pass:${{ secrets.AZURE_PASSWORD }}
           mstsc /v:${{ steps.public_ip_address.outputs.public_ip_address }}:${{ env.RDP_PORT }} /f
+      
+      - name: Verify Azure CLI installation
+  run: az --version
+
+      - name: Install Azure CLI
+  run: |
+    curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+    az --version
+
